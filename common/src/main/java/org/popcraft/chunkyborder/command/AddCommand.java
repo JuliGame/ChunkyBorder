@@ -85,7 +85,9 @@ public class AddCommand implements ChunkyCommand {
             borderData.setWrap(currentBorder.getWrap());
         }
         borders.put(world.getName(), borderData);
-        chunkyBorder.getMapIntegrations().forEach(mapIntegration -> mapIntegration.addShapeMarker(world, borderData.getBorder()));
+        // Refresh map markers with merged polygons
+        chunkyBorder.getMapIntegrations().forEach(org.popcraft.chunkyborder.integration.MapIntegration::removeAllShapeMarkers);
+        chunkyBorder.addBorders();
         sender.sendMessagePrefixed(TranslationKey.FORMAT_BORDER_ADD,
                 selection.shape(),
                 world.getName(),

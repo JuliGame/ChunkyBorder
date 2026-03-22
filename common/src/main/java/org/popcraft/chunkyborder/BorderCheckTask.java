@@ -27,12 +27,18 @@ public class BorderCheckTask implements Runnable {
     public void run() {
         for (final Player player : chunkyBorder.getChunky().getServer().getPlayers()) {
             final PlayerData playerData = chunkyBorder.getPlayerData(player.getUUID());
-            chunkyBorder.getBorder(player.getWorld().getName()).ifPresent(borderData -> {
-                final Location location = player.getLocation();
-                if (borderData.getBorder().isBounding(location.getX(), location.getZ())) {
-                    playerData.setLastLocation(location);
-                } else if (!playerData.isBypassing() && !player.hasPermission("chunkyborder.bypass.move")) {
-                    final CompletableFuture<Location> redirectFuture;
+            final String worldName = player.getWorld().getName();
+            if (!chunkyBorder.hasAnyBorder(worldName)) {
+                continue;
+            }
+            final Location location = player.getLocation();
+            if (chunkyBorder.isInsideAnyBorder(worldName, location.getX(), location.getZ())) {
+                playerData.setLastLocation(location);
+            } else if (!playerData.isBypassing() && !player.hasPermission("chunkyborder.bypass.move")) {
+                final CompletableFuture<Location> redirectFuture;
+                final java.util.Optional<BorderData> mainBorderOpt = chunkyBorder.getBorder(worldName);
+                if (mainBorderOpt.isPresent()) {
+                    final BorderData borderData = mainBorderOpt.get();
                     final BorderWrapType borderWrapType = borderData.getWrapType();
                     if (!BorderWrapType.NONE.equals(borderWrapType)) {
                         redirectFuture = wrap(borderData, borderWrapType, player, playerData);
@@ -46,29 +52,34 @@ public class BorderCheckTask implements Runnable {
                         lastLocation.setPitch(location.getPitch());
                         redirectFuture = CompletableFuture.completedFuture(lastLocation);
                     }
-
-                    redirectFuture.thenAccept(redirect -> {
-                        if (chunkyBorder.getConfig().hasEffect()) {
-                            location.getWorld().playEffect(player, chunkyBorder.getConfig().effect());
-                        }
-                        if (chunkyBorder.getConfig().hasSound()) {
-                            location.getWorld().playSound(player, chunkyBorder.getConfig().sound());
-                        }
-                        player.teleport(redirect);
-                        if (chunkyBorder.getConfig().hasMessage()) {
-                            if (chunkyBorder.getConfig().useActionBar()) {
-                                player.sendActionBar("custom_border_message");
-                            } else {
-                                player.sendMessage("custom_border_message");
-                            }
-                        }
-                    }).whenComplete(((unused, throwable) -> {
-                        if (throwable != null) {
-                            chunkyBorder.getLogger().warn("An exception occurred while redirecting {}", player.getName(), throwable);
-                        }
-                    }));
+                } else {
+                    final Location lastLocation = playerData.getLastLocation().orElse(location.getWorld().getSpawn());
+                    lastLocation.setYaw(location.getYaw());
+                    lastLocation.setPitch(location.getPitch());
+                    redirectFuture = CompletableFuture.completedFuture(lastLocation);
                 }
-            });
+
+                redirectFuture.thenAccept(redirect -> {
+                    if (chunkyBorder.getConfig().hasEffect()) {
+                        location.getWorld().playEffect(player, chunkyBorder.getConfig().effect());
+                    }
+                    if (chunkyBorder.getConfig().hasSound()) {
+                        location.getWorld().playSound(player, chunkyBorder.getConfig().sound());
+                    }
+                    player.teleport(redirect);
+                    if (chunkyBorder.getConfig().hasMessage()) {
+                        if (chunkyBorder.getConfig().useActionBar()) {
+                            player.sendActionBar("custom_border_message");
+                        } else {
+                            player.sendMessage("custom_border_message");
+                        }
+                    }
+                }).whenComplete(((unused, throwable) -> {
+                    if (throwable != null) {
+                        chunkyBorder.getLogger().warn("An exception occurred while redirecting {}", player.getName(), throwable);
+                    }
+                }));
+            }
         }
     }
 

@@ -8,8 +8,6 @@ import de.bluecolored.bluemap.api.markers.ShapeMarker;
 import de.bluecolored.bluemap.api.math.Color;
 import org.popcraft.chunky.platform.World;
 import org.popcraft.chunky.platform.util.Vector2;
-import org.popcraft.chunky.shape.AbstractEllipse;
-import org.popcraft.chunky.shape.AbstractPolygon;
 import org.popcraft.chunky.shape.Shape;
 import org.popcraft.chunkyborder.ChunkyBorderProvider;
 
@@ -19,6 +17,7 @@ import java.util.List;
 public class BlueMapIntegration extends AbstractMapIntegration {
     private static final String MARKER_SET_ID = "chunky";
     private final List<Runnable> pendingMarkers = new ArrayList<>();
+    private int markerCounter = 0;
     private BlueMapAPI blueMapAPI;
     private boolean reloading;
 
@@ -39,33 +38,30 @@ public class BlueMapIntegration extends AbstractMapIntegration {
 
     @Override
     public void addShapeMarker(final World world, final Shape shape) {
+        // Not used when merged polygons are available
+    }
+
+    @Override
+    public void addMergedPolygonMarker(final World world, final List<List<Vector2>> polygons) {
         if (blueMapAPI == null) {
-            this.pendingMarkers.add(() -> this.addShapeMarker(world, shape));
+            this.pendingMarkers.add(() -> this.addMergedPolygonMarker(world, polygons));
             return;
         }
         final MarkerSet markerSet = MarkerSet.builder().label(this.label).build();
-        final de.bluecolored.bluemap.api.math.Shape blueShape;
-        if (shape instanceof final AbstractPolygon polygon) {
+        for (final List<Vector2> points : polygons) {
             final de.bluecolored.bluemap.api.math.Shape.Builder shapeBuilder = de.bluecolored.bluemap.api.math.Shape.builder();
-            polygon.points().forEach(p -> shapeBuilder.addPoint(Vector2d.from(p.getX(), p.getZ())));
-            blueShape = shapeBuilder.build();
-        } else if (shape instanceof final AbstractEllipse ellipse) {
-            final Vector2 center = ellipse.center();
-            final Vector2 radii = ellipse.radii();
-            final Vector2d centerPos = Vector2d.from(center.getX(), center.getZ());
-            blueShape = de.bluecolored.bluemap.api.math.Shape.createEllipse(centerPos, radii.getX(), radii.getZ(), 100);
-        } else {
-            return;
+            points.forEach(p -> shapeBuilder.addPoint(Vector2d.from(p.getX(), p.getZ())));
+            final String markerId = MARKER_SET_ID + "_" + (markerCounter++);
+            final ShapeMarker marker = ShapeMarker.builder()
+                    .label(this.label)
+                    .shape(shapeBuilder.build(), world.getSeaLevel())
+                    .lineColor(new Color(this.color, 1f))
+                    .fillColor(new Color(0))
+                    .lineWidth(this.weight)
+                    .depthTestEnabled(false)
+                    .build();
+            markerSet.getMarkers().put(markerId, marker);
         }
-        final ShapeMarker marker = ShapeMarker.builder()
-                .label(this.label)
-                .shape(blueShape, world.getSeaLevel())
-                .lineColor(new Color(this.color, 1f))
-                .fillColor(new Color(0))
-                .lineWidth(this.weight)
-                .depthTestEnabled(false)
-                .build();
-        markerSet.getMarkers().put(MARKER_SET_ID, marker);
         blueMapAPI.getWorld(world.getName())
                 .map(BlueMapWorld::getMaps)
                 .ifPresent(maps -> maps.forEach(map -> map.getMarkerSets().put(MARKER_SET_ID, markerSet)));

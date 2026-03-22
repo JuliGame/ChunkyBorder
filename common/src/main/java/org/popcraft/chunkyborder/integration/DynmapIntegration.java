@@ -2,61 +2,66 @@ package org.popcraft.chunkyborder.integration;
 
 import org.dynmap.DynmapCommonAPI;
 import org.dynmap.markers.AreaMarker;
-import org.dynmap.markers.CircleMarker;
+import org.dynmap.markers.MarkerAPI;
 import org.dynmap.markers.MarkerDescription;
 import org.dynmap.markers.MarkerSet;
 import org.popcraft.chunky.platform.World;
 import org.popcraft.chunky.platform.util.Vector2;
-import org.popcraft.chunky.shape.AbstractEllipse;
-import org.popcraft.chunky.shape.AbstractPolygon;
 import org.popcraft.chunky.shape.Shape;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 public class DynmapIntegration extends AbstractMapIntegration {
-    private final MarkerSet markerSet;
-    private final Map<String, MarkerDescription> markers;
+    private static final String MARKER_SET_ID = "chunky.markerset";
+    private final MarkerAPI markerAPI;
+    private MarkerSet markerSet;
+    private final Map<String, List<MarkerDescription>> markers;
 
     public DynmapIntegration(final DynmapCommonAPI dynmapAPI) {
-        this.markerSet = dynmapAPI.getMarkerAPI().createMarkerSet("chunky.markerset", this.label, null, false);
+        this.markerAPI = dynmapAPI.getMarkerAPI();
+        this.markerSet = getOrCreateMarkerSet();
         this.markers = new HashMap<>();
+    }
+
+    private MarkerSet getOrCreateMarkerSet() {
+        MarkerSet set = markerAPI.getMarkerSet(MARKER_SET_ID);
+        if (set == null) {
+            set = markerAPI.createMarkerSet(MARKER_SET_ID, this.label, null, false);
+        }
+        return set;
     }
 
     @Override
     public void addShapeMarker(final World world, final Shape shape) {
-        removeShapeMarker(world);
+        // Not used when merged polygons are available
+    }
+
+    @Override
+    public void addMergedPolygonMarker(final World world, final List<List<Vector2>> polygons) {
         final String dynmapWorldName = adaptWorldName(world.getName());
-        if (shape instanceof final AbstractPolygon polygon) {
-            final List<Vector2> points = polygon.points();
+        for (final List<Vector2> points : polygons) {
             final int size = points.size();
             final double[] pointsX = new double[size];
             final double[] pointsZ = new double[size];
             for (int i = 0; i < size; ++i) {
-                final Vector2 point = points.get(i);
-                pointsX[i] = point.getX();
-                pointsZ[i] = point.getZ();
+                pointsX[i] = points.get(i).getX();
+                pointsZ[i] = points.get(i).getZ();
             }
             final AreaMarker marker = markerSet.createAreaMarker(null, this.label, false, dynmapWorldName, pointsX, pointsZ, false);
             marker.setLineStyle(this.weight, 1f, color);
             marker.setFillStyle(0f, 0x000000);
-            markers.put(world.getName(), marker);
-        } else if (shape instanceof final AbstractEllipse ellipse) {
-            final Vector2 center = ellipse.center();
-            final Vector2 radii = ellipse.radii();
-            final CircleMarker marker = markerSet.createCircleMarker(null, this.label, false, dynmapWorldName, center.getX(), world.getSeaLevel(), center.getZ(), radii.getX(), radii.getZ(), false);
-            marker.setLineStyle(this.weight, 1f, color);
-            marker.setFillStyle(0f, 0x000000);
-            markers.put(world.getName(), marker);
+            markers.computeIfAbsent(world.getName(), k -> new ArrayList<>()).add(marker);
         }
     }
 
     @Override
     public void removeShapeMarker(final World world) {
-        final MarkerDescription marker = markers.remove(world.getName());
-        if (marker != null) {
-            marker.deleteMarker();
+        final List<MarkerDescription> worldMarkers = markers.remove(world.getName());
+        if (worldMarkers != null) {
+            worldMarkers.forEach(MarkerDescription::deleteMarker);
         }
     }
 
@@ -66,6 +71,7 @@ public class DynmapIntegration extends AbstractMapIntegration {
             markerSet.deleteMarkerSet();
         }
         markers.clear();
+        markerSet = getOrCreateMarkerSet();
     }
 
     @Override

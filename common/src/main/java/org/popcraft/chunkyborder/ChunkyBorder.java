@@ -54,6 +54,7 @@ public class ChunkyBorder {
     private final MapIntegrationLoader mapIntegrationLoader;
     private final List<MapIntegration> mapIntegrations = new ArrayList<>();
     private final Map<String, BorderData> borders;
+    private final Map<String, List<BorderData>> customRegions;
     private final Map<UUID, PlayerData> players = new HashMap<>();
     private final Version version, targetVersion;
 
@@ -62,8 +63,10 @@ public class ChunkyBorder {
         this.config = config;
         this.mapIntegrationLoader = mapIntegrationLoader;
         this.borders = loadBorders();
+        this.customRegions = loadCustomRegions();
         this.version = loadVersion();
         this.targetVersion = loadTargetVersion();
+        registerCustomTranslations();
         subscribeEvents();
         ChunkyBorderProvider.register(this);
     }
@@ -73,7 +76,19 @@ public class ChunkyBorder {
         maps.forEach(MapIntegration::removeAllShapeMarkers);
         maps.clear();
         saveBorders();
+        saveCustomRegions();
         ChunkyBorderProvider.unregister();
+    }
+
+    private void registerCustomTranslations() {
+        Translator.addCustomTranslation("format_border_addpoints_success", "&aCustom region added to &e%s &awith &e%s &apoints (region #%s)");
+        Translator.addCustomTranslation("format_border_addpoints_min", "&cA custom region requires at least %s points");
+        Translator.addCustomTranslation("format_border_addpoints_invalid", "&cInvalid coordinate pair: %s");
+        Translator.addCustomTranslation("format_border_removepoints_none", "&cNo custom regions found for world &e%s");
+        Translator.addCustomTranslation("format_border_removepoints_one", "&aRemoved custom region #%s from world &e%s");
+        Translator.addCustomTranslation("format_border_removepoints_all", "&aRemoved &e%s &acustom region(s) from world &e%s");
+        Translator.addCustomTranslation("format_border_removepoints_invalid_index", "&cInvalid region index: %s (max: %s)");
+        Translator.addCustomTranslation("format_border_list_custom_region", "  &e%s &7- custom region #%s (%s points)");
     }
 
     private void subscribeEvents() {
@@ -84,11 +99,16 @@ public class ChunkyBorder {
             Translator.addCustomTranslation("custom_border_message", config.message());
         });
         eventBus.subscribe(PlayerTeleportEvent.class, e -> {
-            final Optional<BorderData> borderData = getBorder(e.getLocation().getWorld().getName());
+            final String worldName = e.getLocation().getWorld().getName();
+            if (!hasAnyBorder(worldName)) {
+                return;
+            }
+            final boolean insideAny = isInsideAnyBorder(worldName, e.getLocation().getX(), e.getLocation().getZ());
+            if (insideAny || e.getPlayer().hasPermission("chunkyborder.bypass.move") || this.getPlayerData(e.getPlayer().getUUID()).isBypassing()) {
+                return;
+            }
+            final Optional<BorderData> borderData = getBorder(worldName);
             e.redirect(borderData.map(BorderData::getBorder)
-                    .filter(border -> !border.isBounding(e.getLocation().getX(), e.getLocation().getZ()))
-                    .filter(border -> !e.getPlayer().hasPermission("chunkyborder.bypass.move"))
-                    .filter(border -> !this.getPlayerData(e.getPlayer().getUUID()).isBypassing())
                     .map(border -> {
                         final Vector2 center = Vector2.of(borderData.get().getCenterX(), borderData.get().getCenterZ());
                         final World world = e.getLocation().getWorld();
@@ -143,39 +163,51 @@ public class ChunkyBorder {
                         getPlayerData(player.getUUID()).setLastLocation(insideBorder);
                         return insideBorder;
                     })
-                    .orElse(null));
+                    .orElse(e.getLocation().getWorld().getSpawn()));
         });
-        eventBus.subscribe(WorldLoadEvent.class, e -> getBorder(e.world().getName())
-                .map(BorderData::getBorder)
-                .ifPresent(border -> mapIntegrations.forEach(mapIntegration -> mapIntegration.addShapeMarker(e.world(), border))));
-        eventBus.subscribe(WorldUnloadEvent.class, e -> getBorder(e.world().getName())
-                .map(BorderData::getBorder)
-                .ifPresent(border -> mapIntegrations.forEach(mapIntegration -> mapIntegration.removeShapeMarker(e.world()))));
-        eventBus.subscribe(CreatureSpawnEvent.class, e -> e.setCancelled(getBorder(e.getLocation().getWorld().getName())
-                .map(BorderData::getBorder)
-                .map(border -> !border.isBounding(e.getLocation().getX(), e.getLocation().getZ()))
-                .orElse(false)));
+        eventBus.subscribe(WorldLoadEvent.class, e -> {
+            final String worldName = e.world().getName();
+            final List<Shape> allShapes = getAllBorderShapes(worldName);
+            if (!allShapes.isEmpty()) {
+                final List<List<Vector2>> merged = org.popcraft.chunkyborder.util.PolygonUnion.union(allShapes);
+                mapIntegrations.forEach(mapIntegration -> mapIntegration.addMergedPolygonMarker(e.world(), merged));
+            }
+        });
+        eventBus.subscribe(WorldUnloadEvent.class, e -> {
+            if (hasAnyBorder(e.world().getName())) {
+                mapIntegrations.forEach(mapIntegration -> mapIntegration.removeShapeMarker(e.world()));
+            }
+        });
+        eventBus.subscribe(CreatureSpawnEvent.class, e -> {
+            final String worldName = e.getLocation().getWorld().getName();
+            if (!hasAnyBorder(worldName)) {
+                return;
+            }
+            e.setCancelled(!isInsideAnyBorder(worldName, e.getLocation().getX(), e.getLocation().getZ()));
+        });
         eventBus.subscribe(BlockPlaceEvent.class, e -> {
             final Location location = e.getLocation();
-            e.setCancelled(getBorder(location.getWorld().getName())
-                    .map(BorderData::getBorder)
-                    .map(border -> {
-                        final double x = ((int) location.getX()) + 0.5;
-                        final double z = ((int) location.getZ()) + 0.5;
-                        return !border.isBounding(x, z) && !e.getPlayer().hasPermission("chunkyborder.bypass.place");
-                    })
-                    .orElse(false));
+            final String worldName = location.getWorld().getName();
+            if (!hasAnyBorder(worldName)) {
+                return;
+            }
+            final double x = ((int) location.getX()) + 0.5;
+            final double z = ((int) location.getZ()) + 0.5;
+            if (!isInsideAnyBorder(worldName, x, z) && !e.getPlayer().hasPermission("chunkyborder.bypass.place")) {
+                e.setCancelled(true);
+            }
         });
         eventBus.subscribe(BlockBreakEvent.class, e -> {
             final Location location = e.getLocation();
-            e.setCancelled(getBorder(location.getWorld().getName())
-                    .map(BorderData::getBorder)
-                    .map(border -> {
-                        final double x = ((int) location.getX()) + 0.5;
-                        final double z = ((int) location.getZ()) + 0.5;
-                        return !border.isBounding(x, z) && !e.getPlayer().hasPermission("chunkyborder.bypass.break");
-                    })
-                    .orElse(false));
+            final String worldName = location.getWorld().getName();
+            if (!hasAnyBorder(worldName)) {
+                return;
+            }
+            final double x = ((int) location.getX()) + 0.5;
+            final double z = ((int) location.getZ()) + 0.5;
+            if (!isInsideAnyBorder(worldName, x, z) && !e.getPlayer().hasPermission("chunkyborder.bypass.break")) {
+                e.setCancelled(true);
+            }
         });
         eventBus.subscribe(PlayerQuitEvent.class, e -> players.remove(e.player().getUUID()));
     }
@@ -246,6 +278,40 @@ public class ChunkyBorder {
         return targetVersion;
     }
 
+    public boolean isInsideAnyBorder(final String world, final double x, final double z) {
+        final Optional<BorderData> mainBorder = getBorder(world);
+        if (mainBorder.isPresent() && mainBorder.get().getBorder().isBounding(x, z)) {
+            return true;
+        }
+        for (final BorderData region : getCustomRegions(world)) {
+            if (region.getBorder().isBounding(x, z)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public boolean hasAnyBorder(final String world) {
+        return getBorder(world).isPresent() || !getCustomRegions(world).isEmpty();
+    }
+
+    public List<BorderData> getCustomRegions(final String world) {
+        return customRegions.getOrDefault(world, List.of());
+    }
+
+    public Map<String, List<BorderData>> getCustomRegionsMap() {
+        return customRegions;
+    }
+
+    public List<Shape> getAllBorderShapes(final String world) {
+        final List<Shape> shapes = new ArrayList<>();
+        getBorder(world).map(BorderData::getBorder).ifPresent(shapes::add);
+        for (final BorderData region : getCustomRegions(world)) {
+            shapes.add(region.getBorder());
+        }
+        return shapes;
+    }
+
     public Map<String, BorderData> loadBorders() {
         try (final FileReader fileReader = new FileReader(new File(config.getDirectory().toFile(), "borders.json"))) {
             final Map<String, BorderData> loadedBorders = new Gson().fromJson(fileReader, new TypeToken<Map<String, BorderData>>() {
@@ -270,7 +336,33 @@ public class ChunkyBorder {
         }
     }
 
+    public Map<String, List<BorderData>> loadCustomRegions() {
+        try (final FileReader fileReader = new FileReader(new File(config.getDirectory().toFile(), "custom_regions.json"))) {
+            final Map<String, List<BorderData>> loadedRegions = new Gson().fromJson(fileReader, new TypeToken<Map<String, List<BorderData>>>() {
+            }.getType());
+            if (loadedRegions != null) {
+                return loadedRegions;
+            }
+        } catch (IOException e) {
+            // File may not exist yet, this is fine
+        }
+        return new HashMap<>();
+    }
+
+    public void saveCustomRegions() {
+        if (customRegions == null) {
+            return;
+        }
+        try (final FileWriter fileWriter = new FileWriter(new File(config.getDirectory().toFile(), "custom_regions.json"))) {
+            fileWriter.write(new GsonBuilder().setPrettyPrinting().create().toJson(customRegions));
+        } catch (IOException e) {
+            LOGGER.warn("Failed to save custom regions");
+        }
+    }
+
     public void addBorders() {
+        // Collect all worlds that have any border
+        final Map<String, World> worldsByName = new HashMap<>();
         for (final BorderData borderData : borders.values()) {
             final String worldName = borderData.getWorld();
             if (worldName == null) {
@@ -280,15 +372,33 @@ public class ChunkyBorder {
             if (world == null) {
                 continue;
             }
-            final Shape border = borderData.getBorder();
-            mapIntegrations.forEach(mapIntegration -> mapIntegration.addShapeMarker(world, border));
-            chunky.getEventBus().call(new BorderChangeEvent(world, border));
+            worldsByName.put(worldName, world);
+            chunky.getEventBus().call(new BorderChangeEvent(world, borderData.getBorder()));
+        }
+        for (final String worldName : customRegions.keySet()) {
+            if (!worldsByName.containsKey(worldName)) {
+                chunky.getServer().getWorld(worldName).ifPresent(w -> worldsByName.put(worldName, w));
+            }
+        }
+        // For each world, compute merged polygon union and add single merged marker
+        for (final Map.Entry<String, World> entry : worldsByName.entrySet()) {
+            final String worldName = entry.getKey();
+            final World world = entry.getValue();
+            final List<Shape> allShapes = getAllBorderShapes(worldName);
+            if (allShapes.isEmpty()) {
+                continue;
+            }
+            final List<List<Vector2>> merged = org.popcraft.chunkyborder.util.PolygonUnion.union(allShapes);
+            mapIntegrations.forEach(mapIntegration -> mapIntegration.addMergedPolygonMarker(world, merged));
         }
     }
 
     public void reloadBorders() {
+        mapIntegrations.forEach(MapIntegration::removeAllShapeMarkers);
         borders.clear();
         borders.putAll(loadBorders());
+        customRegions.clear();
+        customRegions.putAll(loadCustomRegions());
         addBorders();
     }
 

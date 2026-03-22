@@ -16,11 +16,13 @@ public class BorderCommand implements ChunkyCommand {
 
     public BorderCommand(final ChunkyBorder chunkyBorder) {
         subCommands.put("add", new AddCommand(chunkyBorder));
+        subCommands.put("addpoints", new AddPointsCommand(chunkyBorder));
         subCommands.put("bypass", new BypassCommand(chunkyBorder));
         subCommands.put("help", new HelpCommand(chunkyBorder));
         subCommands.put("list", new ListCommand(chunkyBorder));
         subCommands.put("load", new LoadCommand(chunkyBorder));
         subCommands.put("remove", new RemoveCommand(chunkyBorder));
+        subCommands.put("removepoints", new RemovePointsCommand(chunkyBorder));
         subCommands.put("wrap", new WrapCommand(chunkyBorder));
     }
 

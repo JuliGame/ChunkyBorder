@@ -3,6 +3,7 @@ package org.popcraft.chunkyborder;
 import org.popcraft.chunky.Selection;
 import org.popcraft.chunky.shape.Shape;
 import org.popcraft.chunky.shape.ShapeFactory;
+import org.popcraft.chunkyborder.shape.CustomPolygonShape;
 
 import java.io.Serializable;
 
@@ -12,6 +13,8 @@ public class BorderData implements Serializable {
     private double radiusX, radiusZ;
     private String shape;
     private String wrap;
+    private double[] customPointsX;
+    private double[] customPointsZ;
     private transient Shape border;
 
     public BorderData() {
@@ -24,6 +27,25 @@ public class BorderData implements Serializable {
         this.radiusX = selection.radiusX();
         this.radiusZ = selection.radiusZ();
         this.shape = selection.shape();
+    }
+
+    public BorderData(final String world, final double[] customPointsX, final double[] customPointsZ) {
+        this.world = world;
+        this.customPointsX = customPointsX;
+        this.customPointsZ = customPointsZ;
+        this.shape = "custom";
+        double minX = Double.MAX_VALUE, maxX = -Double.MAX_VALUE;
+        double minZ = Double.MAX_VALUE, maxZ = -Double.MAX_VALUE;
+        for (int i = 0; i < customPointsX.length; i++) {
+            minX = Math.min(minX, customPointsX[i]);
+            maxX = Math.max(maxX, customPointsX[i]);
+            minZ = Math.min(minZ, customPointsZ[i]);
+            maxZ = Math.max(maxZ, customPointsZ[i]);
+        }
+        this.centerX = (minX + maxX) / 2;
+        this.centerZ = (minZ + maxZ) / 2;
+        this.radiusX = (maxX - minX) / 2;
+        this.radiusZ = (maxZ - minZ) / 2;
     }
 
     public String getWorld() {
@@ -88,11 +110,28 @@ public class BorderData implements Serializable {
 
     public Shape getBorder() {
         if (border == null) {
-            this.border = ShapeFactory.getShape(asSelection().build(), false);
-            this.shape = border.name();
+            if (isCustomPolygon()) {
+                this.border = new CustomPolygonShape(customPointsX, customPointsZ);
+                this.shape = "custom";
+            } else {
+                this.border = ShapeFactory.getShape(asSelection().build(), false);
+                this.shape = border.name();
+            }
             this.wrap = BorderWrapType.fromString(wrap).name().toLowerCase();
         }
         return border;
+    }
+
+    public boolean isCustomPolygon() {
+        return customPointsX != null && customPointsZ != null && customPointsX.length > 0;
+    }
+
+    public double[] getCustomPointsX() {
+        return customPointsX;
+    }
+
+    public double[] getCustomPointsZ() {
+        return customPointsZ;
     }
 
     public void setBorder(final Shape border) {

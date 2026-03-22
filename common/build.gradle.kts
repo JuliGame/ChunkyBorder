@@ -12,6 +12,7 @@ dependencies {
     compileOnly(group = "com.github.BlueMap-Minecraft", name = "BlueMapAPI", version = "${project.property("target_bluemap")}")
     compileOnly(group = "xyz.jpenilla", name = "squaremap-api", version = "${project.property("target_squaremap")}")
     compileOnly(group = "maven.modrinth", name = "pl3xmap", version = "${project.property("target_pl3xmap")}")
+    implementation(group = "org.locationtech.jts", name = "jts-core", version = "1.20.0")
 }
 
 tasks {

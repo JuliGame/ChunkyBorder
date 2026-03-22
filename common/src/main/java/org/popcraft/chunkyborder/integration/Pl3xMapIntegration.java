@@ -13,14 +13,14 @@ import net.pl3x.map.core.markers.option.Options;
 import net.pl3x.map.core.util.Colors;
 import net.pl3x.map.core.world.World;
 import org.popcraft.chunky.platform.util.Vector2;
-import org.popcraft.chunky.shape.AbstractEllipse;
-import org.popcraft.chunky.shape.AbstractPolygon;
-import org.popcraft.chunky.shape.Circle;
 import org.popcraft.chunky.shape.Shape;
+
+import java.util.List;
 
 public class Pl3xMapIntegration extends AbstractMapIntegration {
     private static final String CHUNKY_KEY = "chunky";
     private final Map<World, Layer> defaultLayers = new HashMap<>();
+    private int markerCounter = 0;
     private boolean hideByDefault;
     private int priority;
     private Options markerOptions;
@@ -30,24 +30,19 @@ public class Pl3xMapIntegration extends AbstractMapIntegration {
 
     @Override
     public void addShapeMarker(final org.popcraft.chunky.platform.World world, final Shape shape) {
+        // Not used when merged polygons are available
+    }
+
+    @Override
+    public void addMergedPolygonMarker(final org.popcraft.chunky.platform.World world, final List<List<Vector2>> polygons) {
         getWorld(world).ifPresent(pl3xmapWorld -> {
-            final Marker<?> marker;
-            if (shape instanceof final AbstractPolygon polygon) {
-                marker = Marker.polyline(CHUNKY_KEY, polygon.points().stream()
+            for (final List<Vector2> points : polygons) {
+                final String markerId = CHUNKY_KEY + "_" + (markerCounter++);
+                final Marker<?> marker = Marker.polyline(markerId, points.stream()
                         .map(point -> Point.of(point.getX(), point.getZ()))
                         .toList()).loop();
-            } else if (shape instanceof final AbstractEllipse ellipse) {
-                final Vector2 center = ellipse.center();
-                final Vector2 radii = ellipse.radii();
-                if (ellipse instanceof Circle) {
-                    marker = Marker.ellipse(CHUNKY_KEY, center.getX(), center.getZ(), radii.getX(), radii.getX());
-                } else {
-                    marker = Marker.ellipse(CHUNKY_KEY, center.getX(), center.getZ(), radii.getX(), radii.getZ());
-                }
-            } else {
-                return;
+                getLayer(pl3xmapWorld).addMarker(marker.setOptions(this.markerOptions));
             }
-            getLayer(pl3xmapWorld).clearMarkers().addMarker(marker.setOptions(this.markerOptions));
         });
     }
 

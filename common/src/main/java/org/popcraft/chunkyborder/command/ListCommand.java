@@ -22,7 +22,8 @@ public class ListCommand implements ChunkyCommand {
     @Override
     public void execute(final Sender sender, final CommandArguments arguments) {
         final Map<String, BorderData> borders = chunkyBorder.getBorders();
-        if (!borders.isEmpty()) {
+        final Map<String, List<BorderData>> customRegions = chunkyBorder.getCustomRegionsMap();
+        if (!borders.isEmpty() || !customRegions.isEmpty()) {
             sender.sendMessagePrefixed(TranslationKey.FORMAT_BORDER_LIST);
             borders.values().forEach(border -> {
                 final Selection borderSelection = border.asSelection().build();
@@ -33,6 +34,17 @@ public class ListCommand implements ChunkyCommand {
                         Formatting.number(border.getCenterZ()),
                         Formatting.radius(borderSelection)
                 );
+            });
+            customRegions.forEach((world, regions) -> {
+                for (int i = 0; i < regions.size(); i++) {
+                    final BorderData region = regions.get(i);
+                    final int pointCount = region.getCustomPointsX() != null ? region.getCustomPointsX().length : 0;
+                    sender.sendMessage("format_border_list_custom_region",
+                            world,
+                            String.valueOf(i + 1),
+                            String.valueOf(pointCount)
+                    );
+                }
             });
         } else {
             sender.sendMessagePrefixed(TranslationKey.FORMAT_BORDER_LIST_NONE);

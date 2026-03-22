@@ -5,6 +5,7 @@ import org.popcraft.chunky.shape.AbstractEllipse;
 import org.popcraft.chunky.shape.AbstractPolygon;
 import org.popcraft.chunky.shape.Shape;
 import org.popcraft.chunkyborder.shape.BorderShape;
+import org.popcraft.chunkyborder.shape.CustomPolygonShape;
 import org.popcraft.chunkyborder.shape.EllipseBorderShape;
 import org.popcraft.chunkyborder.shape.PolygonBorderShape;
 

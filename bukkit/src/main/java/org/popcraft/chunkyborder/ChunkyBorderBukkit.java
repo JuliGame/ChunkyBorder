@@ -49,6 +49,7 @@ import org.popcraft.chunkyborder.util.PluginMessage;
 import org.popcraft.chunkyborder.util.EnumUtil;
 
 import java.lang.reflect.InvocationTargetException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.HashMap;
@@ -177,10 +178,13 @@ public final class ChunkyBorderBukkit extends JavaPlugin implements Listener {
             getServer().getOnlinePlayers().forEach(bukkitPlayer -> {
                 final org.bukkit.World bukkitWorld = bukkitPlayer.getWorld();
                 final Player player = new BukkitPlayer(bukkitPlayer);
-                final Shape border = chunkyBorder.getBorder(bukkitWorld.getName()).map(BorderData::getBorder).orElse(null);
+                final List<Shape> borders = chunkyBorder.getAllBorderShapes(bukkitWorld.getName());
                 final boolean isUsingMod = chunkyBorder.getPlayerData(player.getUUID()).isUsingMod();
-                if (border != null && !isUsingMod) {
-                    final List<Vector3> particleLocations = Particles.at(player, border, (tick.longValue() % 20) / 20d);
+                if (!borders.isEmpty() && !isUsingMod) {
+                    final List<Vector3> particleLocations = new ArrayList<>();
+                    for (final Shape border : borders) {
+                        particleLocations.addAll(Particles.at(player, border, (tick.longValue() % 20) / 20d));
+                    }
                     final Color visualizerColor = Color.fromRGB(BorderColor.getColor());
                     final Particle.DustOptions visualizerOptions = new Particle.DustOptions(visualizerColor, 1);
                     for (final Vector3 location : particleLocations) {

@@ -2,9 +2,6 @@ package org.popcraft.chunkyborder.integration;
 
 import org.popcraft.chunky.platform.World;
 import org.popcraft.chunky.platform.util.Vector2;
-import org.popcraft.chunky.shape.AbstractEllipse;
-import org.popcraft.chunky.shape.AbstractPolygon;
-import org.popcraft.chunky.shape.Circle;
 import org.popcraft.chunky.shape.Shape;
 import xyz.jpenilla.squaremap.api.Key;
 import xyz.jpenilla.squaremap.api.LayerProvider;
@@ -29,6 +26,7 @@ public class SquaremapIntegration extends AbstractMapIntegration {
     private static final Key CHUNKY_KEY = Key.of("chunky");
     private final Squaremap squaremap;
     private final Map<String, LayerProvider> defaultProviders = new HashMap<>();
+    private int markerCounter = 0;
     private boolean hideByDefault;
     private int priority;
 
@@ -38,6 +36,11 @@ public class SquaremapIntegration extends AbstractMapIntegration {
 
     @Override
     public void addShapeMarker(final World world, final Shape shape) {
+        // Not used when merged polygons are available
+    }
+
+    @Override
+    public void addMergedPolygonMarker(final World world, final List<List<Vector2>> polygons) {
         getWorldIdentifier(world).flatMap(squaremap::getWorldIfEnabled).ifPresent(squaremapWorld -> {
             final Registry<LayerProvider> layerRegistry = squaremapWorld.layerRegistry();
             if (layerRegistry.hasEntry(WORLDBORDER_KEY)) {
@@ -52,25 +55,6 @@ public class SquaremapIntegration extends AbstractMapIntegration {
                         .build());
             }
             final SimpleLayerProvider chunkyLayerProvider = (SimpleLayerProvider) layerRegistry.get(CHUNKY_KEY);
-            chunkyLayerProvider.clearMarkers();
-            final Marker marker;
-            if (shape instanceof final AbstractPolygon polygon) {
-                final List<Point> points = polygon.points().stream().map(point -> Point.of(point.getX(), point.getZ())).collect(Collectors.toList());
-                final Vector2 lastPoint = polygon.points().get(0);
-                points.add(Point.of(lastPoint.getX(), lastPoint.getZ()));
-                marker = Marker.polyline(points);
-            } else if (shape instanceof final AbstractEllipse ellipse) {
-                final Vector2 center = ellipse.center();
-                final Vector2 radii = ellipse.radii();
-                final Point centerPoint = Point.of(center.getX(), center.getZ());
-                if (ellipse instanceof Circle) {
-                    marker = ellipse(centerPoint, radii.getX(), radii.getX());
-                } else {
-                    marker = ellipse(centerPoint, radii.getX(), radii.getZ());
-                }
-            } else {
-                return;
-            }
             final MarkerOptions markerOptions = MarkerOptions.builder()
                     .stroke(true)
                     .strokeColor(new Color(this.color))
@@ -78,8 +62,13 @@ public class SquaremapIntegration extends AbstractMapIntegration {
                     .fill(false)
                     .clickTooltip(this.label)
                     .build();
-            marker.markerOptions(markerOptions);
-            chunkyLayerProvider.addMarker(CHUNKY_KEY, marker);
+            for (final List<Vector2> points : polygons) {
+                final List<Point> sqPoints = points.stream().map(p -> Point.of(p.getX(), p.getZ())).collect(Collectors.toList());
+                sqPoints.add(Point.of(points.get(0).getX(), points.get(0).getZ()));
+                final Marker marker = Marker.polyline(sqPoints);
+                marker.markerOptions(markerOptions);
+                chunkyLayerProvider.addMarker(Key.of("chunky_" + (markerCounter++)), marker);
+            }
         });
     }
 
