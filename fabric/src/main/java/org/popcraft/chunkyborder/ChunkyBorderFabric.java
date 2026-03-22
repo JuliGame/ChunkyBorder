@@ -111,7 +111,7 @@ public class ChunkyBorderFabric implements ModInitializer {
                 final ServerWorld serverWorld = fabricPlayer.getServerWorld();
                 final World world = new FabricWorld(serverWorld);
                 final Player player = new FabricPlayer(fabricPlayer);
-                final List<Shape> allBorders = chunkyBorder.getAllBorderShapes(world.getName());
+                final List<Shape> allBorders = chunkyBorder.getMergedBorderShapes(world.getName());
                 final boolean isUsingMod = chunkyBorder.getPlayerData(player.getUUID()).isUsingMod();
                 if (!allBorders.isEmpty() && !isUsingMod) {
                     final List<Vector3> particleLocations = new java.util.ArrayList<>();

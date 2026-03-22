@@ -140,7 +140,7 @@ public class ChunkyBorderNeoForge {
             final ServerLevel serverLevel = neoForgePlayer.serverLevel();
             final World world = new NeoForgeWorld(serverLevel);
             final Player player = new NeoForgePlayer(neoForgePlayer);
-            final List<Shape> allBorders = chunkyBorder.getAllBorderShapes(world.getName());
+            final List<Shape> allBorders = chunkyBorder.getMergedBorderShapes(world.getName());
             final boolean isUsingMod = chunkyBorder.getPlayerData(player.getUUID()).isUsingMod();
             if (!allBorders.isEmpty() && !isUsingMod) {
                 final List<Vector3> particleLocations = new java.util.ArrayList<>();

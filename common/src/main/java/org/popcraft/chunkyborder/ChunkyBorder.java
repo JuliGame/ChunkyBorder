@@ -56,6 +56,7 @@ public class ChunkyBorder {
     private final Map<String, BorderData> borders;
     private final Map<String, List<BorderData>> customRegions;
     private final Map<UUID, PlayerData> players = new HashMap<>();
+    private final Map<String, List<Shape>> mergedShapesCache = new HashMap<>();
     private final Version version, targetVersion;
 
     public ChunkyBorder(final Chunky chunky, final Config config, final MapIntegrationLoader mapIntegrationLoader) {
@@ -312,6 +313,39 @@ public class ChunkyBorder {
         return shapes;
     }
 
+    public List<Shape> getMergedBorderShapes(final String world) {
+        return mergedShapesCache.getOrDefault(world, getAllBorderShapes(world));
+    }
+
+    private void rebuildMergedCache() {
+        mergedShapesCache.clear();
+        final java.util.Set<String> allWorlds = new java.util.HashSet<>(borders.keySet());
+        for (final BorderData bd : borders.values()) {
+            if (bd.getWorld() != null) {
+                allWorlds.add(bd.getWorld());
+            }
+        }
+        allWorlds.addAll(customRegions.keySet());
+        for (final String worldName : allWorlds) {
+            final List<Shape> allShapes = getAllBorderShapes(worldName);
+            if (allShapes.size() <= 1) {
+                continue;
+            }
+            final List<List<Vector2>> merged = org.popcraft.chunkyborder.util.PolygonUnion.union(allShapes);
+            final List<Shape> mergedShapes = new ArrayList<>();
+            for (final List<Vector2> points : merged) {
+                final double[] px = new double[points.size()];
+                final double[] pz = new double[points.size()];
+                for (int i = 0; i < points.size(); i++) {
+                    px[i] = points.get(i).getX();
+                    pz[i] = points.get(i).getZ();
+                }
+                mergedShapes.add(new org.popcraft.chunkyborder.shape.CustomPolygonShape(px, pz));
+            }
+            mergedShapesCache.put(worldName, mergedShapes);
+        }
+    }
+
     public Map<String, BorderData> loadBorders() {
         try (final FileReader fileReader = new FileReader(new File(config.getDirectory().toFile(), "borders.json"))) {
             final Map<String, BorderData> loadedBorders = new Gson().fromJson(fileReader, new TypeToken<Map<String, BorderData>>() {
@@ -391,6 +425,7 @@ public class ChunkyBorder {
             final List<List<Vector2>> merged = org.popcraft.chunkyborder.util.PolygonUnion.union(allShapes);
             mapIntegrations.forEach(mapIntegration -> mapIntegration.addMergedPolygonMarker(world, merged));
         }
+        rebuildMergedCache();
     }
 
     public void reloadBorders() {

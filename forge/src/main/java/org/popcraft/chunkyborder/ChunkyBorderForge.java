@@ -147,7 +147,7 @@ public class ChunkyBorderForge {
             final ServerLevel serverLevel = forgePlayer.serverLevel();
             final World world = new ForgeWorld(serverLevel);
             final Player player = new ForgePlayer(forgePlayer);
-            final List<Shape> allBorders = chunkyBorder.getAllBorderShapes(world.getName());
+            final List<Shape> allBorders = chunkyBorder.getMergedBorderShapes(world.getName());
             final boolean isUsingMod = chunkyBorder.getPlayerData(player.getUUID()).isUsingMod();
             if (!allBorders.isEmpty() && !isUsingMod) {
                 final List<Vector3> particleLocations = new java.util.ArrayList<>();
